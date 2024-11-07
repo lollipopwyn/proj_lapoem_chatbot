@@ -1,0 +1,7 @@
+fastapi
+websockets
+python-dotenv
+databases
+sqlalchemy
+asyncpg
+langchain_openai
