@@ -175,7 +175,8 @@ async def websocket_endpoint(websocket: WebSocket, member_num: int, book_id: int
             user_message = data["message"]
 
             # 다양한 요청 감지 (정규 표현식 사용)
-            if re.search(r"\s*책\s*(내용|설명|소개|이야기|알려줘|무엇|뭐야|해줘)", user_message) and book_id != 0:
+            if re.search(r"(이\s*책|책)(에\s*(대해|관해|관한)?\s*)?(내용|설명|소개|이야기|알려줘|무엇|뭐야|해줘|얘기해줘|알고\s*싶어|얘기해볼까|뭘까|설명해줘|얘기할\s*수\s*있어|알려줄래|얘기해\s*줄\s*수\s*있어)", user_message, re.IGNORECASE) and book_id != 0:
+
                 # 책 정보 조회
                 book_info_query = "SELECT book_title, book_description FROM book WHERE book_id = :book_id"
                 book_info = await database.fetch_one(book_info_query, values={"book_id": book_id})
@@ -190,6 +191,7 @@ async def websocket_endpoint(websocket: WebSocket, member_num: int, book_id: int
 
                 # 사용자 메시지와 Stella의 응답을 대화 기록에 추가
                 stella_message = {"sender_id": "stella", "message": bot_message_content}
+
                 
                 if chat_id != 0:
                     manager.chat_histories[chat_id].append(data)
