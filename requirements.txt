@@ -4,4 +4,6 @@ python-dotenv
 databases
 sqlalchemy
 asyncpg
+langchain
 langchain_openai
+uvicorn
