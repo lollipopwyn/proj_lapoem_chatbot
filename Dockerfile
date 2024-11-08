@@ -17,4 +17,4 @@ COPY . .
 EXPOSE 9002
 
 # uvicorn을 이용해 FastAPI 앱 실행
-CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "9002", "--reload"]
+CMD ["uvicorn", "server:app", "--host", "0.0.0.0", "--port", "9002", "--reload"]
