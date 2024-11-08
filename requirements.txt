@@ -8,3 +8,4 @@ langchain
 langchain_openai
 uvicorn
 six
+psycopg2-binary
