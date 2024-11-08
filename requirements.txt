@@ -7,3 +7,4 @@ asyncpg
 langchain
 langchain_openai
 uvicorn
+six
