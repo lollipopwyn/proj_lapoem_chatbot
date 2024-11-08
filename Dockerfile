@@ -14,7 +14,7 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY . .
 
 # .env 파일을 Docker 이미지에 포함하지 않고, 나중에 크레덴셜을 설정해 사용할 예정
-EXPOSE 8000
+EXPOSE 9002
 
 # uvicorn을 이용해 FastAPI 앱 실행
 CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "9002", "--reload"]

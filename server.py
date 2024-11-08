@@ -218,6 +218,11 @@ async def get_chat_history(book_id: int, member_num: int):
     chat_history = [{"sender_id": row["sender_id"], "message": row["chat_content"]} for row in rows]
     return chat_history
 
+@app.get("/")
+async def root():
+    return {"message": "Chatbot server is running"}
+
+
 # 데이터베이스 연결 관리
 @app.on_event("startup")
 async def startup():
