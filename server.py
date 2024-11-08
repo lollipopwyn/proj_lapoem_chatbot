@@ -150,6 +150,8 @@ book expert:
 
 import re
 
+import re
+
 # WebSocket 엔드포인트 - 채팅
 @app.websocket("/ws/chat")
 async def websocket_endpoint(websocket: WebSocket, member_num: int, book_id: int = 0):
@@ -165,61 +167,61 @@ async def websocket_endpoint(websocket: WebSocket, member_num: int, book_id: int
 
     try:
         while True:
-            data = await websocket.receive_text()
+            data = await websocket.receive_json()
             print(f"[메시지 수신] data: {data}")
-            if not data.strip():
+            if not data.get("message", "").strip():
                 continue
-            
-            # "이 책에 대해 설명해줘!" 요청 처리 (정규 표현식 사용)
-            if re.search(r"\b이\s*책에\s*대해", data.strip()) and book_id != 0:
+
+            user_message = data["message"]
+
+            # 다양한 요청 감지 (정규 표현식 사용)
+            if re.search(r"\s*책\s*(내용|설명|소개|이야기|알려줘|무엇|뭐야|해줘)", user_message) and book_id != 0:
                 # 책 정보 조회
                 book_info_query = "SELECT book_title, book_description FROM book WHERE book_id = :book_id"
                 book_info = await database.fetch_one(book_info_query, values={"book_id": book_id})
                 
+                # book_info 검증 및 기본값 설정
                 if book_info:
-                    bot_message_content = f"{book_info['book_title']}에 대한 책 설명을 알려드릴게요. \n {book_info['book_description']}라고 책 소개에 나와 있어요."
+                    book_title = book_info['book_title'] if book_info['book_title'] is not None else "제목을 찾을 수 없습니다."
+                    book_description = book_info['book_description'] if book_info['book_description'] is not None else "설명이 없습니다."
+                    bot_message_content = f"{book_title}에 대한 책 설명을 알려드릴게요.\n{book_description}라고 설명되어 있어요."
                 else:
                     bot_message_content = "죄송합니다, 해당 책에 대한 정보를 찾을 수 없습니다."
-                
+
                 # 사용자 메시지와 Stella의 응답을 대화 기록에 추가
-                user_message = {"sender_id": "user", "message": data}
                 stella_message = {"sender_id": "stella", "message": bot_message_content}
                 
-                manager.chat_histories[chat_id].append(user_message)
-                manager.chat_histories[chat_id].append(stella_message)
+                if chat_id != 0:
+                    manager.chat_histories[chat_id].append(data)
+                    manager.chat_histories[chat_id].append(stella_message)
 
-                # 데이터베이스에 저장
-                save_query = "INSERT INTO chating_content (chat_id, chat_content, sender_id) VALUES (:chat_id, :chat_content, :sender_id)"
-                await database.execute(save_query, values={"chat_id": chat_id, "chat_content": data, "sender_id": "user"})
-                await database.execute(save_query, values={"chat_id": chat_id, "chat_content": bot_message_content, "sender_id": "stella"})
+                    # 데이터베이스에 저장
+                    save_query = "INSERT INTO chating_content (chat_id, chat_content, sender_id) VALUES (:chat_id, :chat_content, :sender_id)"
+                    await database.execute(save_query, values={"chat_id": chat_id, "chat_content": user_message, "sender_id": "user"})
+                    await database.execute(save_query, values={"chat_id": chat_id, "chat_content": bot_message_content, "sender_id": "stella"})
                 
                 # 클라이언트로 Stella의 응답 전송
                 await websocket.send_json(stella_message)
-                continue  # 이후 일반 메시지 처리로 넘어가지 않도록 건너뜁니다.
-
-            if book_id == 0:
-                response = await chat_model.agenerate([data])
-                bot_message_content = response.generations[0][0].text.strip()
-                stella_message = {"sender_id": "stella", "message": bot_message_content}
-                
-                await websocket.send_json(stella_message)
             else:
+                # 일반 메시지 처리
                 chat_history = "\n".join([entry["message"] for entry in manager.chat_histories.get(chat_id, [])])
                 prompt = PromptTemplate(input_variables=["chat_history", "user_message"], template=prompt_template)
-                formatted_prompt = prompt.format(chat_history=chat_history, user_message=data)
+                formatted_prompt = prompt.format(chat_history=chat_history, user_message=user_message)
                 
                 response = await chat_model.agenerate([formatted_prompt])
                 bot_message_content = response.generations[0][0].text.strip()
 
-                user_message = {"sender_id": "user", "message": data}
+                user_message = {"sender_id": "user", "message": user_message}
                 stella_message = {"sender_id": "stella", "message": bot_message_content}
-                manager.chat_histories[chat_id].append(user_message)
-                manager.chat_histories[chat_id].append(stella_message)
                 
-                # 데이터베이스에 메시지 저장
-                save_query = "INSERT INTO chating_content (chat_id, chat_content, sender_id) VALUES (:chat_id, :chat_content, :sender_id)"
-                await database.execute(save_query, values={"chat_id": chat_id, "chat_content": data, "sender_id": "user"})
-                await database.execute(save_query, values={"chat_id": chat_id, "chat_content": bot_message_content, "sender_id": "stella"})
+                if chat_id != 0:
+                    manager.chat_histories[chat_id].append(user_message)
+                    manager.chat_histories[chat_id].append(stella_message)
+                    
+                    # 데이터베이스에 메시지 저장
+                    save_query = "INSERT INTO chating_content (chat_id, chat_content, sender_id) VALUES (:chat_id, :chat_content, :sender_id)"
+                    await database.execute(save_query, values={"chat_id": chat_id, "chat_content": user_message["message"], "sender_id": "user"})
+                    await database.execute(save_query, values={"chat_id": chat_id, "chat_content": bot_message_content, "sender_id": "stella"})
 
                 # 클라이언트로 메시지 전송
                 await manager.broadcast(websocket, stella_message)
@@ -227,6 +229,9 @@ async def websocket_endpoint(websocket: WebSocket, member_num: int, book_id: int
         print(f"[WebSocket 연결 끊김] chat_id: {chat_id}, member_num: {member_num}, book_id: {book_id}")
         if book_id != 0:
             manager.disconnect(websocket, chat_id)
+
+
+
 
 # HTTP 엔드포인트 - 채팅 내역 가져오기
 @app.get("/api/chat/{book_id}/{member_num}")
