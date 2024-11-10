@@ -148,9 +148,19 @@ Respond only in Hangul.
 book expert:
 """
 
-import re
 
-import re
+# 서버에 추가할 엔드포인트
+@app.get("/api/chat-list/{member_num}")
+async def get_chat_rooms(member_num: int):
+    query = """
+    SELECT cb.book_id, b.book_title
+    FROM chatbot cb
+    JOIN book b ON cb.book_id = b.book_id
+    WHERE cb.member_num = :member_num
+    """
+    rows = await database.fetch_all(query, values={"member_num": member_num})
+    chat_rooms = [{"book_id": row["book_id"], "book_title": row["book_title"]} for row in rows]
+    return chat_rooms
 
 # WebSocket 엔드포인트 - 채팅
 @app.websocket("/ws/chat")
@@ -231,9 +241,6 @@ async def websocket_endpoint(websocket: WebSocket, member_num: int, book_id: int
         print(f"[WebSocket 연결 끊김] chat_id: {chat_id}, member_num: {member_num}, book_id: {book_id}")
         if book_id != 0:
             manager.disconnect(websocket, chat_id)
-
-
-
 
 # HTTP 엔드포인트 - 채팅 내역 가져오기
 @app.get("/api/chat/{book_id}/{member_num}")
