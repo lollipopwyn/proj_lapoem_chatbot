@@ -149,8 +149,8 @@ book expert:
 """
 
 
-# 서버에 추가할 엔드포인트
-@app.get("/api/chat-list/{member_num}")
+# 채팅 리스트 엔드포인트
+@app.get("/chat-list/{member_num}")
 async def get_chat_rooms(member_num: int):
     query = """
     SELECT cb.book_id, b.book_title
@@ -185,29 +185,31 @@ async def websocket_endpoint(websocket: WebSocket, member_num: int, book_id: int
             user_message = data["message"]
 
             # 다양한 요청 감지 (정규 표현식 사용)
-            if re.search(r"(이\s*책|책)(에\s*(대해|관해|관한)?\s*)?(내용|설명|소개|이야기|알려줘|무엇|뭐야|해줘|얘기해줘|알고\s*싶어|얘기해볼까|뭘까|설명해줘|얘기할\s*수\s*있어|알려줄래|얘기해\s*줄\s*수\s*있어)", user_message, re.IGNORECASE) and book_id != 0:
+            if re.search(r"(이\s*책\s*설명해줘|책\s*(에\s*(대해|관해|관한)?\s*)?(내용|설명|소개|이야기|알려줘|알려\s*줄래|어떤\s*(책|내용)|무엇|뭐야|해줘|얘기해줘|알고\s*싶어|얘기해볼까|뭘까|설명해줘|얘기할\s*수\s*있어|알려줄래|얘기해\s*줄\s*수\s*있어|어떤\s*내용이야|어떤\s*내용|어떤\s*내용인지|어떤\s*내용일까|내용을\s*알려줘|설명을\s*알려줘))", user_message, re.IGNORECASE):
+                if book_id != 0:
+                    # 책 제목만 가져와서 GPT 모델로 설명 생성
+                    book_title_query = "SELECT book_title FROM book WHERE book_id = :book_id"
+                    book_title = await database.fetch_one(book_title_query, values={"book_id": book_id})
 
-                # 책 정보 조회
-                book_info_query = "SELECT book_title, book_description FROM book WHERE book_id = :book_id"
-                book_info = await database.fetch_one(book_info_query, values={"book_id": book_id})
-                
-                # book_info 검증 및 기본값 설정
-                if book_info:
-                    book_title = book_info['book_title'] if book_info['book_title'] is not None else "제목을 찾을 수 없습니다."
-                    book_description = book_info['book_description'] if book_info['book_description'] is not None else "설명이 없습니다."
-                    bot_message_content = f"{book_title}에 대한 책 설명을 알려드릴게요.\n{book_description}라고 설명되어 있어요."
+                    if book_title:
+                        title_text = book_title['book_title']
+                        prompt_message = f"{title_text}라는 책에 대해 설명해줘."
+                        response = await chat_model.agenerate([prompt_message])
+                        bot_message_content = response.generations[0][0].text.strip()
+                    else:
+                        bot_message_content = "죄송합니다, 해당 책에 대한 정보를 찾을 수 없습니다."
                 else:
-                    bot_message_content = "죄송합니다, 해당 책에 대한 정보를 찾을 수 없습니다."
+                    # 일반 요청 처리 (책 ID가 없는 경우)
+                    response = await chat_model.agenerate([user_message])
+                    bot_message_content = response.generations[0][0].text.strip()
 
-                # 사용자 메시지와 Stella의 응답을 대화 기록에 추가
                 stella_message = {"sender_id": "stella", "message": bot_message_content}
-
                 
+                # 데이터베이스 저장 조건
                 if chat_id != 0:
                     manager.chat_histories[chat_id].append(data)
                     manager.chat_histories[chat_id].append(stella_message)
 
-                    # 데이터베이스에 저장
                     save_query = "INSERT INTO chating_content (chat_id, chat_content, sender_id) VALUES (:chat_id, :chat_content, :sender_id)"
                     await database.execute(save_query, values={"chat_id": chat_id, "chat_content": user_message, "sender_id": "user"})
                     await database.execute(save_query, values={"chat_id": chat_id, "chat_content": bot_message_content, "sender_id": "stella"})
@@ -242,8 +244,9 @@ async def websocket_endpoint(websocket: WebSocket, member_num: int, book_id: int
         if book_id != 0:
             manager.disconnect(websocket, chat_id)
 
+
 # HTTP 엔드포인트 - 채팅 내역 가져오기
-@app.get("/api/chat/{book_id}/{member_num}")
+@app.get("/chat/{book_id}/{member_num}")
 async def get_chat_history(book_id: int, member_num: int):
     query = """
     SELECT cc.chat_content, cc.sender_id
